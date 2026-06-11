@@ -1,11 +1,11 @@
 name: Build APK
 
 on:
-  workflow_dispatch: # APK derlemesini biz manuel olarak tetikleyeceğiz
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04 # Daha kararlı bir Ubuntu sürümüne sabitledik
 
     steps:
     - name: Checkout code
@@ -14,7 +14,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.10'
 
     - name: Install dependencies
       run: |
@@ -22,17 +22,12 @@ jobs:
         sudo apt install -y git zip unzip openjdk-17-jdk ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good autoconf automake libtool pkg-config cmake
         pip install --upgrade pip
         pip install buildozer cython virtualenv openpyxl
-        
-    - name: Fix Android Build Tools Path (Aidl Error Fix)
-      run: |
-        sudo ln -s /usr/local/lib/android/sdk/build-tools/35.0.0/aidl /usr/local/lib/android/sdk/tools/aidl || true
 
     - name: Build with Buildozer
       run: |
+        # Sunucunun kendi yüklü gelen çakışma yaratan SDK yollarını temizliyoruz
+        export ANDROID_HOME=""
+        export ANDROID_NDK_HOME=""
+        
+        # Buildozer'a her şeyi sıfırdan kendi izole klasörüne kurmasını söylüyoruz
         buildozer -v android debug --auto-accept-sdk-license
-
-    - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Kaçış Seti Takip APK
-        path: .buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists/kacissetitakip/build/outputs/apk/debug/*.apk
