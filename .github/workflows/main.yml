@@ -8,56 +8,34 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
 
-    - name: Set up Java 17 (Required for Android Tools)
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    - name: Install Android Command Line Tools
-      run: |
-        mkdir -p $HOME/android-sdk/cmdline-tools
-        cd $HOME/android-sdk/cmdline-tools
-        # Resmi Google Android araçlarını indiriyoruz
-        wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-        unzip commandlinetools-linux-11076708_latest.zip
-        mv cmdline-tools latest
-        rm commandlinetools-linux-11076708_latest.zip
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            git zip unzip autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev \
+            libtinfo5 cmake libffi-dev libssl-dev
 
-    - name: Accept Android Licenses & Install Build Tools
-      run: |
-        export ANDROID_HOME=$HOME/android-sdk
-        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
-        # Lisansları otomatik onaylayıp gerekli araçları kuruyoruz
-        yes | sdkmanager --licenses
-        sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools"
+          pip install --upgrade pip
+          pip install buildozer cython
 
-    - name: Install Buildozer and Dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y git zip unzip ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good autoconf automake libtool pkg-config cmake
-        pip install --upgrade pip
-        pip install buildozer cython virtualenv openpyxl
+      - name: Build APK
+        run: |
+          buildozer android debug
 
-    - name: Build with Buildozer
-      run: |
-        # Buildozer'a kurduğumuz temiz Android SDK yollarını gösteriyoruz
-        export ANDROID_HOME=$HOME/android-sdk
-        export PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin
-        
-        # Derlemeyi başlat
-        buildozer -v android debug --auto-accept-sdk-license
-
-    - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Kaçış Seti Takip APK
-        path: .buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists/kacissetitakip/build/outputs/apk/debug/*.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: bin/*.apk
