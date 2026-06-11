@@ -66,7 +66,7 @@ class KacisSetiApp(App):
         
         # --- Üst Başlık ---
         self.lbl_durum = Label(
-            text="DRÄGER PARAT 3200 TAKİP SİSTEMİ", 
+            text="KAÇIŞ SETİ TAKİP SİSTEMİ", 
             size_hint_y=0.05, 
             color=ISG_SARISI,
             bold=True,
