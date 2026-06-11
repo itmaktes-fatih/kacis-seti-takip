@@ -22,6 +22,10 @@ jobs:
         sudo apt install -y git zip unzip openjdk-17-jdk ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good autoconf automake libtool pkg-config cmake
         pip install --upgrade pip
         pip install buildozer cython virtualenv openpyxl
+        
+    - name: Fix Android Build Tools Path (Aidl Error Fix)
+      run: |
+        sudo ln -s /usr/local/lib/android/sdk/build-tools/35.0.0/aidl /usr/local/lib/android/sdk/tools/aidl || true
 
     - name: Build with Buildozer
       run: |
