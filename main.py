@@ -222,7 +222,7 @@ class KacisSetiApp(App):
 
     def arama_yap_click(self, instance):
         kriter = self.input_arama.text.strip()
-        if not Black:
+        if not kriter:
             self.lbl_liste.text = "Lütfen aramak için geçerli bir kriter yazın."
             return
             
