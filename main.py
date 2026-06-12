@@ -351,7 +351,7 @@ class BulutKacisApp(App):
         self.title = "Bulut Kaçış Seti Takip Sistemi"
         sm = ScreenManager()
         sm.add_widget(GirisEkrani(name='giris_ekrani'))
-        sm.add_widget(AnaTakipEkrani(name='ana_anteni')) # Ana ekran adı
+        sm.add_widget(AnaTakipEkrani(name='ana_ekran')) # Burayı 'ana_ekran' olarak düzelttik
         sm.current = 'giris_ekrani'
         return sm
 
