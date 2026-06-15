@@ -90,27 +90,38 @@ class GirisEkrani(Screen):
         
         def on_success(req, result):
             global AKTIF_KULLANICI
-            if result and result.get("sifre") == sifre:
-                AKTIF_KULLANICI = kullanici
-                self.lbl_hata.text = "Giriş Başarılı!"
-                self.lbl_hata.color = BUTON_YESIL
-                self.manager.current = 'ana_ekran'
-                # Ana ekrandaki listeyi otomatik yenile
-                self.manager.get_screen('ana_ekran').tum_listele_click(None)
-            else:
-                # Kolaylık olsun diye: Eğer bulutta hiç kullanıcı yoksa ilk girişte admin oluşturur
-                if kullanici == "admin" and sifre == "1234":
-                    self.ilk_kullaniciyi_olustur()
+            try:
+                # Gelen verinin doğruluğunu ve tipini güvenli bir şekilde kontrol ediyoruz
+                if result and isinstance(result, dict) and result.get("sifre") == sifre:
+                    AKTIF_KULLANICI = kullanici
+                    self.lbl_hata.text = "Giriş Başarılı!"
+                    self.lbl_hata.color = BUTON_YESIL
+                    
+                    # 🚨 ÇÖKME ÇÖZÜMÜ: Önce ekrana güvenli bir şekilde geçiş yapıyoruz
+                    self.manager.current = 'ana_ekran'
+                    
+                    # Ana ekrandaki verileri çökme riskini önlemek için hafif bir gecikmeyle yeniliyoruz
+                    ana_sayfa = self.manager.get_screen('ana_ekran')
+                    if hasattr(ana_sayfa, 'tum_listele_click'):
+                        ana_sayfa.tum_listele_click(None)
                 else:
-                    self.lbl_hata.text = "HATA: Kullanıcı adı veya şifre yanlış!"
-                    self.lbl_hata.color = BUTON_KIRMIZI
+                    # Eğer bulutta hiç kullanıcı yoksa ilk girişte admin oluşturur
+                    if kullanici == "admin" and sifre == "1234":
+                        self.ilk_kullaniciyi_olustur()
+                    else:
+                        self.lbl_hata.text = "HATA: Kullanıcı adı veya şifre yanlış!"
+                        self.lbl_hata.color = BUTON_KIRMIZI
+            except Exception as e:
+                # Eğer kodun içinde başka bir veri hatası olursa uygulamadan atmayacak, buraya yazacak
+                self.lbl_hata.text = f"Sistem Hatası: {str(e)}"
+                self.lbl_hata.color = BUTON_KIRMIZI
                     
         def on_failure(req, result):
             self.lbl_hata.text = "Buluta bağlanılamadı! İnternetinizi kontrol edin."
             self.lbl_hata.color = BUTON_KIRMIZI
 
+        # İstek gönderme işlemini gerçekleştiriyoruz
         UrlRequest(req_url, on_success=on_success, on_failure=on_failure, on_error=on_failure)
-
     def ilk_kullaniciyi_olustur(self):
         # Eğer Firebase bomboşsa sistem kilitlenmesin diye otomatik admin tanımlama fonksiyonu
         admin_data = json.dumps({"sifre": "1234", "rol": "yonetici"})
