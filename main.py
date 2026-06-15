@@ -11,7 +11,13 @@ from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.utils import get_color_from_hex, platform
 from kivy.graphics import Color, RoundedRectangle
 from kivy.network.urlrequest import UrlRequest # Firebase iletişimi için
+from kivy.core.window import Window # Eksik olan Window importu
 from openpyxl import Workbook
+
+# 🚨 GÜVENLİ İNTERNET BAĞLANTISI (SSL) YAMASI BURAYA GELİYOR:
+import certifi
+from os import environ
+environ['SSL_CERT_FILE'] = certifi.where()
 
 # 🚨 BURAYA 1. ADIMDA KOPYALADIĞIN KENDİ FIREBASE URL'SİNİ YAZ (Sonunda / işareti olsun)
 FIREBASE_URL = "https://kacis-seti-takip-default-rtdb.europe-west1.firebasedatabase.app/"
