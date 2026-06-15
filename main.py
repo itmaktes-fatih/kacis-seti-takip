@@ -11,10 +11,15 @@ from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.utils import get_color_from_hex, platform
 from kivy.graphics import Color, RoundedRectangle
 from kivy.network.urlrequest import UrlRequest # Firebase iletişimi için
-from kivy.core.window import Window # 🚨 HATA ÇÖZÜMÜ: Eksik olan Window importu eklendi!
+from kivy.core.window import Window # Eksik olan Window importu
 from openpyxl import Workbook
 
-# Firebase URL (Sonunda / işareti kalacak şekilde doğru ayarlandı)
+# 🚨 GÜVENLİ İNTERNET BAĞLANTISI (SSL) YAMASI:
+import certifi
+from os import environ
+environ['SSL_CERT_FILE'] = certifi.where()
+
+# 🚨 FIREBASE URL ADRESİN:
 FIREBASE_URL = "https://kacis-seti-takip-default-rtdb.europe-west1.firebasedatabase.app/"
 
 # Renk Paleti
@@ -85,38 +90,53 @@ class GirisEkrani(Screen):
         
         def on_success(req, result):
             global AKTIF_KULLANICI
-            if result and result.get("sifre") == sifre:
-                AKTIF_KULLANICI = kullanici
-                self.lbl_hata.text = "Giriş Başarılı!"
-                self.lbl_hata.color = BUTON_YESIL
-                self.manager.current = 'ana_ekran'
-                # Ana ekrandaki listeyi otomatik yenile
-                self.manager.get_screen('ana_ekran').tum_listele_click(None)
-            else:
-                # Kolaylık olsun diye: Eğer bulutta hiç kullanıcı yoksa ilk girişte admin oluşturur
-                if kullanici == "admin" and sifre == "1234":
-                    self.ilk_kullaniciyi_olustur()
+            try:
+                if result and isinstance(result, dict) and result.get("sifre") == sifre:
+                    AKTIF_KULLANICI = kullanici
+                    self.lbl_hata.text = "Giriş Başarılı!"
+                    self.lbl_hata.color = BUTON_YESIL
+                    
+                    self.manager.current = 'ana_ekran'
+                    
+                    ana_sayfa = self.manager.get_screen('ana_ekran')
+                    if hasattr(ana_sayfa, 'tum_listele_click'):
+                        ana_sayfa.tum_listele_click(None)
                 else:
-                    self.lbl_hata.text = "HATA: Kullanıcı adı veya şifre yanlış!"
-                    self.lbl_hata.color = BUTON_KIRMIZI
+                    if kullanici == "admin" and sifre == "1234":
+                        self.ilk_kullaniciyi_olustur()
+                    else:
+                        self.lbl_hata.text = "HATA: Kullanıcı adı veya şifre yanlış!"
+                        self.lbl_hata.color = BUTON_KIRMIZI
+            except Exception as e:
+                self.lbl_hata.text = f"Sistem Hatası: {str(e)}"
+                self.lbl_hata.color = BUTON_KIRMIZI
                     
         def on_failure(req, result):
             self.lbl_hata.text = "Buluta bağlanılamadı! İnternetinizi kontrol edin."
             self.lbl_hata.color = BUTON_KIRMIZI
 
-        UrlRequest(req_url, on_success=on_success, on_failure=on_failure, on_error=on_failure)
-
+        # 🚨 DÜZELTİLDİ: Sınıf ismi eklendi ve parametreler yalın hale getirildi
+        UrlRequest(req_url, on_success, on_failure, on_failure)
+        
     def ilk_kullaniciyi_olustur(self):
         admin_data = json.dumps({"sifre": "1234", "rol": "yonetici"})
-        UrlRequest(f"{FIREBASE_URL}kullanicilar/admin.json", req_method='PUT', req_body=admin_data,
-                   on_success=lambda r, v: setattr(self.lbl_hata, 'text', "İlk kurulum yapıldı! Tekrar Giriş Yapın."))
+        def on_admin_success(req, result):
+            self.lbl_hata.text = "İlk kurulum yapıldı! Tekrar Giriş Yapın."
+            self.lbl_hata.color = BUTON_YESIL
+            
+        def on_admin_fail(req, result):
+            self.lbl_hata.text = "İlk kurulum başarısız oldu!"
+            self.lbl_hata.color = BUTON_KIRMIZI
+
+        # 🚨 DÜZELTİLDİ: Keyword argümanlar kaldırıldı, metot PUT olarak eklendi
+        UrlRequest(f"{FIREBASE_URL}kullanicilar/admin.json", on_admin_success, on_admin_fail, on_admin_fail, req_method='PUT', req_body=admin_data)
 
 # --- 2. EKRAN: BULUT TABANLI ANA TAKİP EKRANI ---
 class AnaTakipEkrani(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.secili_kayit_id = None
-        self.tum_bulut_verisi = {} # Arama ve listeleme için yerel kopya
+        self.tum_bulut_verisi = {} 
         
         ana_duzen = BoxLayout(orientation='vertical', padding=15, spacing=10)
         
@@ -208,10 +228,11 @@ class AnaTakipEkrani(Screen):
             "ad_soyad": self.input_ad.text.strip(),
             "seri_no": self.input_seri.text.strip(),
             "son_kullanma": self.input_skt.text.strip(),
-            "ekleyen_kullanici": AKTIF_KULLANICI
+            "ekleyen_kullanici": AKTIF_KULLANICI 
         }
-        UrlRequest(f"{FIREBASE_URL}kayitlar.json", req_method='POST', req_body=json.dumps(yeni_kayit),
-                   on_success=self.islem_basarili, on_failure=self.islem_hatali)
+        
+        # 🚨 DÜZELTİLDİ: Isimlendirilmiş argümanlar kaldırıldı
+        UrlRequest(f"{FIREBASE_URL}kayitlar.json", self.islem_basarili, self.islem_hatali, self.islem_hatali, req_method='POST', req_body=json.dumps(yeni_kayit))
 
     def personel_guncelle_click(self, instance):
         if not self.secili_kayit_id:
@@ -229,16 +250,16 @@ class AnaTakipEkrani(Screen):
             "son_kullanma": self.input_skt.text.strip(),
             "ekleyen_kullanici": AKTIF_KULLANICI
         }
-        UrlRequest(f"{FIREBASE_URL}kayitlar/{self.secili_kayit_id}.json", req_method='PATCH', req_body=json.dumps(guncel_kayit),
-                   on_success=self.islem_basarili, on_failure=self.islem_hatali)
+        # 🚨 DÜZELTİLDİ: Isimlendirilmiş argümanlar kaldırıldı
+        UrlRequest(f"{FIREBASE_URL}kayitlar/{self.secili_kayit_id}.json", self.islem_basarili, self.islem_hatali, self.islem_hatali, req_method='PATCH', req_body=json.dumps(guncel_kayit))
 
     def personel_sil_click(self, instance):
         if not self.secili_kayit_id:
             self.lbl_durum.text = "HATA: Silinecek kaydı seçmediniz!"
             self.lbl_durum.color = BUTON_KIRMIZI
             return
-        UrlRequest(f"{FIREBASE_URL}kayitlar/{self.secili_kayit_id}.json", req_method='DELETE',
-                   on_success=self.islem_basarili, on_failure=self.islem_hatali)
+        # 🚨 DÜZELTİLDİ: Isimlendirilmiş argümanlar kaldırıldı
+        UrlRequest(f"{FIREBASE_URL}kayitlar/{self.secili_kayit_id}.json", self.islem_basarili, self.islem_hatali, self.islem_hatali, req_method='DELETE')
 
     def islem_basarili(self, req, result):
         self.lbl_durum.text = "İŞLEM BAŞARILI: Bulut güncellendi."
@@ -252,7 +273,8 @@ class AnaTakipEkrani(Screen):
 
     def tum_listele_click(self, instance):
         self.lbl_liste.text = "Buluttan canlı veriler çekiliyor..."
-        UrlRequest(f"{FIREBASE_URL}kayitlar.json", on_success=self.listeleme_yap, on_failure=self.islem_hatali)
+        # 🚨 DÜZELTİLDİ: Isimlendirilmiş argümanlar kaldırıldı
+        UrlRequest(f"{FIREBASE_URL}kayitlar.json", self.listeleme_yap, self.islem_hatali, self.islem_hatali)
 
     def listeleme_yap(self, req, result):
         if not result:
@@ -344,8 +366,6 @@ class AnaTakipEkrani(Screen):
 
 class BulutKacisApp(App):
     def build(self):
-        # 🚨 Arka plan rengini güvenli bir şekilde burada uyguluyoruz
-        Window.clearcolor = ARKA_PLAN 
         self.title = "Bulut Kaçış Seti Takip Sistemi"
         sm = ScreenManager()
         sm.add_widget(GirisEkrani(name='giris_ekrani'))
@@ -354,4 +374,5 @@ class BulutKacisApp(App):
         return sm
 
 if __name__ == "__main__":
+    Window.clearcolor = ARKA_PLAN
     BulutKacisApp().run()
