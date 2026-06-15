@@ -1,6 +1,8 @@
 import os
 from datetime import datetime
 import json
+import threading # Arka planda donmadan çalışması için
+import requests # UrlRequest yerine kararlı requests kütüphanesi
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -10,14 +12,13 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.utils import get_color_from_hex, platform
 from kivy.graphics import Color, RoundedRectangle
-from kivy.network.urlrequest import UrlRequest # Firebase iletişimi için
-from kivy.core.window import Window # Eksik olan Window importu
+from kivy.core.window import Window
+from kivy.clock import Clock # Arayüz güncellemelerini güvenli yapmak için
 from openpyxl import Workbook
 
 # 🚨 GÜVENLİ İNTERNET BAĞLANTISI (SSL) YAMASI:
 import certifi
-from os import environ
-environ['SSL_CERT_FILE'] = certifi.where()
+os.environ['SSL_CERT_FILE'] = certifi.where()
 
 # 🚨 FIREBASE URL ADRESİN:
 FIREBASE_URL = "https://kacis-seti-takip-default-rtdb.europe-west1.firebasedatabase.app/"
@@ -67,69 +68,64 @@ class GirisEkrani(Screen):
         duzen.add_widget(form_alani)
         
         btn_giris = Button(text="SİSTEME GİRİŞ YAP", background_normal='', background_color=ISG_SARISI, color=(0,0,0,1), bold=True, font_size='16sp', size_hint_y=0.1)
-        btn_giris.bind(on_press=self.bulut_giris_kontrol)
+        btn_giris.bind(on_press=self.bulut_giris_kontrol_thread)
         duzen.add_widget(btn_giris)
         duzen.add_widget(BoxLayout(size_hint_y=0.2))
         self.add_widget(duzen)
 
-    def bulut_giris_kontrol(self, instance):
+    def bulut_giris_kontrol_thread(self, instance):
+        # Uygulama donmasın diye internet isteğini arka planda başlatıyoruz
+        threading.Thread(target=self.bulut_giris_kontrol).start()
+
+    def bulut_giris_kontrol(self):
         global AKTIF_KULLANICI
         kullanici = self.input_kullanici.text.strip().lower()
         sifre = self.input_sifre.text.strip()
         
         if not kullanici or not sifre:
-            self.lbl_hata.text = "HATA: Alanlar boş bırakılamaz!"
-            self.lbl_hata.color = BUTON_KIRMIZI
+            Clock.schedule_once(lambda dt: self.HataSetEt("HATA: Alanlar boş bırakılamaz!", BUTON_KIRMIZI))
             return
             
-        self.lbl_hata.text = "Bulut bağlantısı kuruluyor..."
-        self.lbl_hata.color = ISG_SARISI
+        Clock.schedule_once(lambda dt: self.HataSetEt("Bulut bağlantısı kuruluyor...", ISG_SARISI))
         
-        # Firebase'den kullanıcıları çekip kontrol ediyoruz
         req_url = f"{FIREBASE_URL}kullanicilar/{kullanici}.json"
         
-        def on_success(req, result):
-            global AKTIF_KULLANICI
-            try:
+        try:
+            response = requests.get(req_url, timeout=10)
+            if response.status_code == 200:
+                result = response.json()
                 if result and isinstance(result, dict) and result.get("sifre") == sifre:
                     AKTIF_KULLANICI = kullanici
-                    self.lbl_hata.text = "Giriş Başarılı!"
-                    self.lbl_hata.color = BUTON_YESIL
-                    
-                    self.manager.current = 'ana_ekran'
-                    
-                    ana_sayfa = self.manager.get_screen('ana_ekran')
-                    if hasattr(ana_sayfa, 'tum_listele_click'):
-                        ana_sayfa.tum_listele_click(None)
+                    Clock.schedule_once(self.GirisBasariliGecis)
                 else:
                     if kullanici == "admin" and sifre == "1234":
                         self.ilk_kullaniciyi_olustur()
                     else:
-                        self.lbl_hata.text = "HATA: Kullanıcı adı veya şifre yanlış!"
-                        self.lbl_hata.color = BUTON_KIRMIZI
-            except Exception as e:
-                self.lbl_hata.text = f"Sistem Hatası: {str(e)}"
-                self.lbl_hata.color = BUTON_KIRMIZI
+                        Clock.schedule_once(lambda dt: self.HataSetEt("HATA: Kullanıcı adı veya şifre yanlış!", BUTON_KIRMIZI))
+            else:
+                Clock.schedule_once(lambda dt: self.HataSetEt("Bulut hatası! Sunucu yanıt vermedi.", BUTON_KIRMIZI))
+        except Exception as e:
+            Clock.schedule_once(lambda dt: self.HataSetEt(f"Bağlantı Hatası: {str(e)[:30]}", BUTON_KIRMIZI))
+
+    def HataSetEt(self, metin, renk):
+        self.lbl_hata.text = metin
+        self.lbl_hata.color = renk
+
+    def GirisBasariliGecis(self, dt):
+        self.lbl_hata.text = "Giriş Başarılı!"
+        self.lbl_hata.color = BUTON_YESIL
+        self.manager.current = 'ana_ekran'
+        ana_sayfa = self.manager.get_screen('ana_ekran')
+        if hasattr(ana_sayfa, 'tum_listele_click_thread'):
+            ana_sayfa.tum_listele_click_thread(None)
                     
-        def on_failure(req, result):
-            self.lbl_hata.text = "Buluta bağlanılamadı! İnternetinizi kontrol edin."
-            self.lbl_hata.color = BUTON_KIRMIZI
-
-        # 🚨 DÜZELTİLDİ: Sınıf ismi eklendi ve parametreler yalın hale getirildi
-        UrlRequest(req_url, on_success, on_failure, on_failure)
-        
     def ilk_kullaniciyi_olustur(self):
-        admin_data = json.dumps({"sifre": "1234", "rol": "yonetici"})
-        def on_admin_success(req, result):
-            self.lbl_hata.text = "İlk kurulum yapıldı! Tekrar Giriş Yapın."
-            self.lbl_hata.color = BUTON_YESIL
-            
-        def on_admin_fail(req, result):
-            self.lbl_hata.text = "İlk kurulum başarısız oldu!"
-            self.lbl_hata.color = BUTON_KIRMIZI
-
-        # 🚨 DÜZELTİLDİ: Keyword argümanlar kaldırıldı, metot PUT olarak eklendi
-        UrlRequest(f"{FIREBASE_URL}kullanicilar/admin.json", on_admin_success, on_admin_fail, on_admin_fail, req_method='PUT', req_body=admin_data)
+        try:
+            admin_data = {"sifre": "1234", "rol": "yonetici"}
+            requests.put(f"{FIREBASE_URL}kullanicilar/admin.json", json=admin_data, timeout=10)
+            Clock.schedule_once(lambda dt: self.HataSetEt("İlk kurulum yapıldı! Tekrar Giriş Yapın.", BUTON_YESIL))
+        except:
+            Clock.schedule_once(lambda dt: self.HataSetEt("İlk kurulum başarısız oldu!", BUTON_KIRMIZI))
 
 # --- 2. EKRAN: BULUT TABANLI ANA TAKİP EKRANI ---
 class AnaTakipEkrani(Screen):
@@ -159,11 +155,11 @@ class AnaTakipEkrani(Screen):
         
         islem_butonlari = BoxLayout(orientation='horizontal', size_hint_y=0.06, spacing=8)
         self.btn_ekle = Button(text="BULUTA KAYDET", background_normal='', background_color=BUTON_YESIL, font_size='13sp', bold=True)
-        self.btn_ekle.bind(on_press=self.personel_ekle_click)
+        self.btn_ekle.bind(on_press=lambda inst: threading.Thread(target=self.personel_ekle_click).start())
         self.btn_guncelle = Button(text="GÜNCELLE", background_normal='', background_color=BUTON_MAVI, font_size='13sp', bold=True)
-        self.btn_guncelle.bind(on_press=self.personel_guncelle_click)
+        self.btn_guncelle.bind(on_press=lambda inst: threading.Thread(target=self.personel_guncelle_click).start())
         self.btn_sil = Button(text="SİL", background_normal='', background_color=BUTON_KIRMIZI, font_size='13sp', bold=True)
-        self.btn_sil.bind(on_press=self.personel_sil_click)
+        self.btn_sil.bind(on_press=lambda inst: threading.Thread(target=self.personel_sil_click).start())
         
         islem_butonlari.add_widget(self.btn_ekle)
         islem_butonlari.add_widget(self.btn_guncelle)
@@ -180,7 +176,7 @@ class AnaTakipEkrani(Screen):
         
         liste_buton_duzeni = BoxLayout(orientation='horizontal', size_hint_y=0.06, spacing=8)
         btn_tum_liste = Button(text="Yenile / Listele", background_normal='', background_color=get_color_from_hex("#7F8C8D"), font_size='12sp', bold=True)
-        btn_tum_liste.bind(on_press=self.tum_listele_click)
+        btn_tum_liste.bind(on_press=self.tum_listele_click_thread)
         btn_kritik_liste = Button(text="⚡ Kritik Olanlar", background_normal='', background_color=get_color_from_hex("#D35400"), font_size='12sp', bold=True)
         btn_kritik_liste.bind(on_press=self.kritik_listele_click)
         btn_excel = Button(text="📊 Excel Çıktısı", background_normal='', background_color=get_color_from_hex("#27AE60"), font_size='12sp', bold=True)
@@ -201,6 +197,10 @@ class AnaTakipEkrani(Screen):
         
         self.add_widget(ana_duzen)
 
+    def DurumGuncelle(self, metin, renk):
+        self.lbl_durum.text = metin
+        self.lbl_durum.color = renk
+
     def formu_temizle(self):
         self.input_firma.text = ""
         self.input_tc.text = ""
@@ -215,11 +215,10 @@ class AnaTakipEkrani(Screen):
             return False
         return True
 
-    def personel_ekle_click(self, instance):
+    def personel_ekle_click(self):
         global AKTIF_KULLANICI
         if not self.zorunlu_alan_kontrolu():
-            self.lbl_durum.text = "HATA: Zorunlu alanları doldurun!"
-            self.lbl_durum.color = BUTON_KIRMIZI
+            Clock.schedule_once(lambda dt: self.DurumGuncelle("HATA: Zorunlu alanları doldurun!", BUTON_KIRMIZI))
             return
             
         yeni_kayit = {
@@ -231,13 +230,18 @@ class AnaTakipEkrani(Screen):
             "ekleyen_kullanici": AKTIF_KULLANICI 
         }
         
-        # 🚨 DÜZELTİLDİ: Isimlendirilmiş argümanlar kaldırıldı
-        UrlRequest(f"{FIREBASE_URL}kayitlar.json", self.islem_basarili, self.islem_hatali, self.islem_hatali, req_method='POST', req_body=json.dumps(yeni_kayit))
+        try:
+            res = requests.post(f"{FIREBASE_URL}kayitlar.json", json=yeni_kayit, timeout=10)
+            if res.status_code == 200:
+                Clock.schedule_once(self.islem_basarili)
+            else:
+                Clock.schedule_once(lambda dt: self.DurumGuncelle("BULUT HATASI: Kayıt yapılamadı.", BUTON_KIRMIZI))
+        except:
+            Clock.schedule_once(lambda dt: self.DurumGuncelle("BULUT HATASI: İnternet yok.", BUTON_KIRMIZI))
 
-    def personel_guncelle_click(self, instance):
+    def personel_guncelle_click(self):
         if not self.secili_kayit_id:
-            self.lbl_durum.text = "HATA: Önce ARA kısmından bir kayıt seçin!"
-            self.lbl_durum.color = BUTON_KIRMIZI
+            Clock.schedule_once(lambda dt: self.DurumGuncelle("HATA: Önce ARA kısmından bir kayıt seçin!", BUTON_KIRMIZI))
             return
         if not self.zorunlu_alan_kontrolu():
             return
@@ -250,33 +254,43 @@ class AnaTakipEkrani(Screen):
             "son_kullanma": self.input_skt.text.strip(),
             "ekleyen_kullanici": AKTIF_KULLANICI
         }
-        # 🚨 DÜZELTİLDİ: Isimlendirilmiş argümanlar kaldırıldı
-        UrlRequest(f"{FIREBASE_URL}kayitlar/{self.secili_kayit_id}.json", self.islem_basarili, self.islem_hatali, self.islem_hatali, req_method='PATCH', req_body=json.dumps(guncel_kayit))
+        try:
+            res = requests.patch(f"{FIREBASE_URL}kayitlar/{self.secili_kayit_id}.json", json=guncel_kayit, timeout=10)
+            if res.status_code == 200:
+                Clock.schedule_once(self.islem_basarili)
+        except:
+            Clock.schedule_once(lambda dt: self.DurumGuncelle("BULUT HATASI!", BUTON_KIRMIZI))
 
-    def personel_sil_click(self, instance):
+    def personel_sil_click(self):
         if not self.secili_kayit_id:
-            self.lbl_durum.text = "HATA: Silinecek kaydı seçmediniz!"
-            self.lbl_durum.color = BUTON_KIRMIZI
+            Clock.schedule_once(lambda dt: self.DurumGuncelle("HATA: Silinecek kaydı seçmediniz!", BUTON_KIRMIZI))
             return
-        # 🚨 DÜZELTİLDİ: Isimlendirilmiş argümanlar kaldırıldı
-        UrlRequest(f"{FIREBASE_URL}kayitlar/{self.secili_kayit_id}.json", self.islem_basarili, self.islem_hatali, self.islem_hatali, req_method='DELETE')
+        try:
+            res = requests.delete(f"{FIREBASE_URL}kayitlar/{self.secili_kayit_id}.json", timeout=10)
+            if res.status_code == 200:
+                Clock.schedule_once(self.islem_basarili)
+        except:
+            Clock.schedule_once(lambda dt: self.DurumGuncelle("BULUT HATASI!", BUTON_KIRMIZI))
 
-    def islem_basarili(self, req, result):
+    def islem_basarili(self, dt):
         self.lbl_durum.text = "İŞLEM BAŞARILI: Bulut güncellendi."
         self.lbl_durum.color = BUTON_YESIL
         self.formu_temizle()
-        self.tum_listele_click(None)
+        self.tum_listele_click_thread(None)
 
-    def islem_hatali(self, req, result):
-        self.lbl_durum.text = "BULUT HATASI: Bağlantı kesilmiş olabilir."
-        self.lbl_durum.color = BUTON_KIRMIZI
-
-    def tum_listele_click(self, instance):
+    def tum_listele_click_thread(self, instance):
         self.lbl_liste.text = "Buluttan canlı veriler çekiliyor..."
-        # 🚨 DÜZELTİLDİ: Isimlendirilmiş argümanlar kaldırıldı
-        UrlRequest(f"{FIREBASE_URL}kayitlar.json", self.listeleme_yap, self.islem_hatali, self.islem_hatali)
+        threading.Thread(target=self.tum_listele_click).start()
 
-    def listeleme_yap(self, req, result):
+    def tum_listele_click(self):
+        try:
+            res = requests.get(f"{FIREBASE_URL}kayitlar.json", timeout=10)
+            result = res.json()
+            Clock.schedule_once(lambda dt: self.listeleme_yap(result))
+        except:
+            Clock.schedule_once(lambda dt: self.DurumGuncelle("Veri çekme hatası!", BUTON_KIRMIZI))
+
+    def listeleme_yap(self, result):
         if not result:
             self.lbl_liste.text = "Bulut veritabanında henüz hiç kayıt yok."
             self.tum_bulut_verisi = {}
