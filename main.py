@@ -11,15 +11,10 @@ from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.utils import get_color_from_hex, platform
 from kivy.graphics import Color, RoundedRectangle
 from kivy.network.urlrequest import UrlRequest # Firebase iletişimi için
-from kivy.core.window import Window # Eksik olan Window importu
+from kivy.core.window import Window # 🚨 HATA ÇÖZÜMÜ: Eksik olan Window importu eklendi!
 from openpyxl import Workbook
 
-# 🚨 GÜVENLİ İNTERNET BAĞLANTISI (SSL) YAMASI BURAYA GELİYOR:
-import certifi
-from os import environ
-environ['SSL_CERT_FILE'] = certifi.where()
-
-# 🚨 BURAYA 1. ADIMDA KOPYALADIĞIN KENDİ FIREBASE URL'SİNİ YAZ (Sonunda / işareti olsun)
+# Firebase URL (Sonunda / işareti kalacak şekilde doğru ayarlandı)
 FIREBASE_URL = "https://kacis-seti-takip-default-rtdb.europe-west1.firebasedatabase.app/"
 
 # Renk Paleti
@@ -90,41 +85,28 @@ class GirisEkrani(Screen):
         
         def on_success(req, result):
             global AKTIF_KULLANICI
-            try:
-                # Gelen verinin doğruluğunu ve tipini güvenli bir şekilde kontrol ediyoruz
-                if result and isinstance(result, dict) and result.get("sifre") == sifre:
-                    AKTIF_KULLANICI = kullanici
-                    self.lbl_hata.text = "Giriş Başarılı!"
-                    self.lbl_hata.color = BUTON_YESIL
-                    
-                    # 🚨 ÇÖKME ÇÖZÜMÜ: Önce ekrana güvenli bir şekilde geçiş yapıyoruz
-                    self.manager.current = 'ana_ekran'
-                    
-                    # Ana ekrandaki verileri çökme riskini önlemek için hafif bir gecikmeyle yeniliyoruz
-                    ana_sayfa = self.manager.get_screen('ana_ekran')
-                    if hasattr(ana_sayfa, 'tum_listele_click'):
-                        ana_sayfa.tum_listele_click(None)
+            if result and result.get("sifre") == sifre:
+                AKTIF_KULLANICI = kullanici
+                self.lbl_hata.text = "Giriş Başarılı!"
+                self.lbl_hata.color = BUTON_YESIL
+                self.manager.current = 'ana_ekran'
+                # Ana ekrandaki listeyi otomatik yenile
+                self.manager.get_screen('ana_ekran').tum_listele_click(None)
+            else:
+                # Kolaylık olsun diye: Eğer bulutta hiç kullanıcı yoksa ilk girişte admin oluşturur
+                if kullanici == "admin" and sifre == "1234":
+                    self.ilk_kullaniciyi_olustur()
                 else:
-                    # Eğer bulutta hiç kullanıcı yoksa ilk girişte admin oluşturur
-                    if kullanici == "admin" and sifre == "1234":
-                        self.ilk_kullaniciyi_olustur()
-                    else:
-                        self.lbl_hata.text = "HATA: Kullanıcı adı veya şifre yanlış!"
-                        self.lbl_hata.color = BUTON_KIRMIZI
-            except Exception as e:
-                # Eğer kodun içinde başka bir veri hatası olursa uygulamadan atmayacak, buraya yazacak
-                self.lbl_hata.text = f"Sistem Hatası: {str(e)}"
-                self.lbl_hata.color = BUTON_KIRMIZI
+                    self.lbl_hata.text = "HATA: Kullanıcı adı veya şifre yanlış!"
+                    self.lbl_hata.color = BUTON_KIRMIZI
                     
         def on_failure(req, result):
             self.lbl_hata.text = "Buluta bağlanılamadı! İnternetinizi kontrol edin."
             self.lbl_hata.color = BUTON_KIRMIZI
 
-        # İstek gönderme işlemini gerçekleştiriyoruz
-        UrlRequest(req_url, on_success, on_failure, on_failure)
-        
+        UrlRequest(req_url, on_success=on_success, on_failure=on_failure, on_error=on_failure)
+
     def ilk_kullaniciyi_olustur(self):
-        # Eğer Firebase bomboşsa sistem kilitlenmesin diye otomatik admin tanımlama fonksiyonu
         admin_data = json.dumps({"sifre": "1234", "rol": "yonetici"})
         UrlRequest(f"{FIREBASE_URL}kullanicilar/admin.json", req_method='PUT', req_body=admin_data,
                    on_success=lambda r, v: setattr(self.lbl_hata, 'text', "İlk kurulum yapıldı! Tekrar Giriş Yapın."))
@@ -226,10 +208,8 @@ class AnaTakipEkrani(Screen):
             "ad_soyad": self.input_ad.text.strip(),
             "seri_no": self.input_seri.text.strip(),
             "son_kullanma": self.input_skt.text.strip(),
-            "ekleyen_kullanici": AKTIF_KULLANICI # Hangi kullanıcı ekledi?
+            "ekleyen_kullanici": AKTIF_KULLANICI
         }
-        
-        # POST metodu bulutta otomatik benzersiz bir ID oluşturur
         UrlRequest(f"{FIREBASE_URL}kayitlar.json", req_method='POST', req_body=json.dumps(yeni_kayit),
                    on_success=self.islem_basarili, on_failure=self.islem_hatali)
 
@@ -249,7 +229,6 @@ class AnaTakipEkrani(Screen):
             "son_kullanma": self.input_skt.text.strip(),
             "ekleyen_kullanici": AKTIF_KULLANICI
         }
-        # PATCH metodu sadece ilgili ID'deki veriyi günceller
         UrlRequest(f"{FIREBASE_URL}kayitlar/{self.secili_kayit_id}.json", req_method='PATCH', req_body=json.dumps(guncel_kayit),
                    on_success=self.islem_basarili, on_failure=self.islem_hatali)
 
@@ -258,7 +237,6 @@ class AnaTakipEkrani(Screen):
             self.lbl_durum.text = "HATA: Silinecek kaydı seçmediniz!"
             self.lbl_durum.color = BUTON_KIRMIZI
             return
-        # DELETE metodu buluttan kaydı tamamen siler
         UrlRequest(f"{FIREBASE_URL}kayitlar/{self.secili_kayit_id}.json", req_method='DELETE',
                    on_success=self.islem_basarili, on_failure=self.islem_hatali)
 
@@ -366,13 +344,14 @@ class AnaTakipEkrani(Screen):
 
 class BulutKacisApp(App):
     def build(self):
+        # 🚨 Arka plan rengini güvenli bir şekilde burada uyguluyoruz
+        Window.clearcolor = ARKA_PLAN 
         self.title = "Bulut Kaçış Seti Takip Sistemi"
         sm = ScreenManager()
         sm.add_widget(GirisEkrani(name='giris_ekrani'))
-        sm.add_widget(AnaTakipEkrani(name='ana_ekran')) # Burayı 'ana_ekran' olarak düzelttik
+        sm.add_widget(AnaTakipEkrani(name='ana_ekran'))
         sm.current = 'giris_ekrani'
         return sm
 
 if __name__ == "__main__":
-    Window.clearcolor = ARKA_PLAN
     BulutKacisApp().run()
