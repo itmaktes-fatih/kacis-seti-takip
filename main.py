@@ -121,7 +121,8 @@ class GirisEkrani(Screen):
             self.lbl_hata.color = BUTON_KIRMIZI
 
         # İstek gönderme işlemini gerçekleştiriyoruz
-        UrlRequest(req_url, on_success=on_success, on_failure=on_failure, on_error=on_failure)
+        UrlRequest(req_url, on_success, on_failure, on_failure)
+        
     def ilk_kullaniciyi_olustur(self):
         # Eğer Firebase bomboşsa sistem kilitlenmesin diye otomatik admin tanımlama fonksiyonu
         admin_data = json.dumps({"sifre": "1234", "rol": "yonetici"})
