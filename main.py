@@ -332,11 +332,21 @@ class AnaTakipEkrani(Screen):
         return True
 
     def personel_ekle_click(self):
-        global AKTIF_KULLANICI
+        global AKTIF_KULLANICI, KULLANICI_ROLÜ
         if not self.zorunlu_alan_kontrolu():
             Clock.schedule_once(lambda dt: self.DurumGuncelle("HATA: Zorunlu alanları doldurun!", BUTON_KIRMIZI))
             return
             
+        girilen_isim = self.input_ad.text.strip().lower()
+        
+        # 🚨 MÜKERRER KAYIT ENGELLEME KONTROLÜ
+        # Eğer işlem yapan kişi admin (yonetici) DEĞİLSE isim kontrolü yapar:
+        if KULLANICI_ROLÜ != "yonetici" and self.tum_bulut_verisi:
+            for k_id, v in self.tum_bulut_verisi.items():
+                if v.get('ad_soyad', '').strip().lower() == girilen_isim:
+                    Clock.schedule_once(lambda dt: self.DurumGuncelle("🚫 ENGELLENDİ: Bu personel adına zaten bir kayıt var!", BUTON_KIRMIZI))
+                    return
+
         yeni_kayit = {
             "firma": self.input_firma.text.strip(),
             "tc_no": self.input_tc.text.strip(),
